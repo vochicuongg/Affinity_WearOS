@@ -1,0 +1,84 @@
+name: affinity
+description: "Affinity — Exclusive 1-to-1 Wear OS companion app. Standalone LTE/eSIM communication via haptic Morse code, mood signals, and ephemeral audio."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.7.0
+
+# ════════════════════════════════════════════════════════════════
+#  DEPENDENCIES
+# ════════════════════════════════════════════════════════════════
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Firebase ────────────────────────────────────────────────
+  firebase_core: ^3.13.1
+  firebase_auth: ^5.5.3
+  cloud_firestore: ^5.6.9
+  firebase_messaging: ^15.2.5
+  firebase_storage: ^12.4.10
+  google_sign_in: ^6.2.2
+
+  # ── Wear OS ─────────────────────────────────────────────────
+  # Layout helpers for round/square watch screens + ambient mode
+  wear: ^1.0.0
+
+  # ── Sensors & Hardware ──────────────────────────────────────
+  sensors_plus: ^6.1.1          # Accelerometer / off-body detection
+  geolocator: ^14.0.2           # GPS for Proximity Vibe
+  vibration: ^2.0.0             # Custom haptic patterns (Morse Code)
+  permission_handler: ^11.4.0   # Runtime permission requests
+
+  # ── Security & Encryption ───────────────────────────────────
+  flutter_secure_storage: ^9.2.4   # EncryptedSharedPreferences-backed key vault
+  pointycastle: ^3.9.1             # RSA/AES E2EE
+  uuid: ^4.5.1                     # Nonce generation (anti-replay)
+  crypto: ^3.0.6                   # SHA-256 hashing
+
+  # ── State Management ────────────────────────────────────────
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # ── Audio ───────────────────────────────────────────────────
+  record: ^5.2.0          # PTT recording (Whisper Mode)
+  just_audio: ^0.10.5     # Ephemeral note playback
+  path_provider: ^2.1.5   # Temp file management
+
+  # ── Utilities ───────────────────────────────────────────────
+  logger: ^2.5.0          # Structured logging
+  equatable: ^2.0.7       # Value equality for domain entities
+  dartz: ^0.10.1          # Functional error handling (Either<Failure, T>)
+  audio_session: ^0.2.3
+  hive_flutter: ^1.1.0
+  connectivity_plus: ^7.1.1
+  workmanager: ^0.9.0+3
+
+# ── Dependency overrides ───────────────────────────────────────
+# record_linux 0.7.2 is incompatible with record_platform_interface 1.5.0
+# (missing startStream + hasPermission signature change).
+# Force the compatible version. Not used at runtime on Wear OS.
+dependency_overrides:
+  record_linux: ^1.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.15
+  riverpod_generator: ^2.6.5
+  custom_lint: ^0.7.5
+  riverpod_lint: ^2.6.5
+
+# ════════════════════════════════════════════════════════════════
+#  FLUTTER
+# ════════════════════════════════════════════════════════════════
+flutter:
+  uses-material-design: true
+
+  # TODO: Add app icon assets in Phase 6 (Affinity heart logo)
+  # flutter:
+  #   assets:
+  #     - assets/images/
+  #     - assets/icons/

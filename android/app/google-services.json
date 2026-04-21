@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "695709413805",
+    "project_id": "affinity-0411",
+    "storage_bucket": "affinity-0411.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:695709413805:android:09b1709719a7bd318d7124",
+        "android_client_info": {
+          "package_name": "com.affinity.wear"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "695709413805-8dt26h5jpcr8a17o30k2fqcsc68q9fi3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVqd0PFn2HNbyrvQuA9229S1V_8tcj0E4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "695709413805-8dt26h5jpcr8a17o30k2fqcsc68q9fi3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
