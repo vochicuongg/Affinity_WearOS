@@ -5,6 +5,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/security/encryption_service.dart';
+import '../../../../core/utils/friendly_error.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/firestore_pairing_datasource.dart';
@@ -35,13 +36,10 @@ final userProfileProvider = StreamProvider<UserProfile?>((ref) {
       .map((either) => either.fold((_) => null, (p) => p));
 });
 
-/// Convenience: true when the user profile shows a paired partner.
+/// Convenience: true when there is an active pair session loaded in memory.
 final isPairedProvider = Provider<bool>((ref) {
-  final profileAsync = ref.watch(userProfileProvider);
-  return profileAsync.maybeWhen(
-    data: (profile) => profile?.isPaired ?? false,
-    orElse: () => false,
-  );
+  final pairingState = ref.watch(pairingNotifierProvider);
+  return pairingState.session != null;
 });
 
 // ── Pairing State Machine ─────────────────────────────────────────────────
@@ -92,40 +90,94 @@ class PairingNotifier extends Notifier<PairingState> {
   static const _tag = 'PairingNotifier';
 
   @override
-  PairingState build() => const PairingState();
+  PairingState build() {
+    // Use ref.listen (not ref.watch) so build() is NOT re-invoked on
+    // profile changes — only the callback fires, preserving state.
+    ref.listen<AsyncValue<UserProfile?>>(userProfileProvider, (_, next) {
+      next.whenData((profile) => _onProfileChanged(profile));
+    });
+
+    // Also check the current profile value immediately (covers app restart
+    // when the profile is already loaded before this notifier is built).
+    Future.microtask(() {
+      final currentProfile = ref.read(userProfileProvider).value;
+      _onProfileChanged(currentProfile);
+    });
+
+    return const PairingState();
+  }
+
+  void _onProfileChanged(UserProfile? profile) {
+    if (profile == null) return;
+    if (profile.isPaired && state.session == null) {
+      Log.i(_tag, 'Profile paired, restoring session...');
+      _restoreSession();
+    } else if (!profile.isPaired && state.session != null) {
+      Log.i(_tag, 'Profile unpaired, resetting state.');
+      state = const PairingState();
+    }
+  }
 
   IPairingRepository get _repo => ref.read(pairingRepositoryProvider);
   IEncryptionService get _crypto => ref.read(encryptionServiceProvider);
   String get _uid => ref.read(authNotifierProvider).user.uid;
 
   // ── Step 1: Register this device in Firestore ─────────────────────────
+  //   Non-blocking: if Firestore is unreachable (DNS fail, no network)
+  //   the profile write times out and the UI proceeds to idle.
 
   Future<void> initializeProfile() async {
     state = state.copyWith(status: PairingStatus.initializingProfile);
-    final pubKeyResult = await _crypto.getLocalPublicKey();
-    final publicKeyJson = pubKeyResult.getOrElse(() => '');
+    try {
+      final pubKeyResult = await _crypto.getLocalPublicKey();
+      final publicKeyJson = pubKeyResult.getOrElse(() => '');
 
-    final fcmToken = await FirestorePairingDataSource().getFcmToken() ?? '';
+      final fcmToken = await FirestorePairingDataSource().getFcmToken()
+          .timeout(const Duration(seconds: 5), onTimeout: () => null) ?? '';
 
-    final profile = UserProfile(
-      uid:          _uid,
-      fcmToken:     fcmToken,
-      publicKeyJson: publicKeyJson,
-      createdAt:    DateTime.now(),
-    );
+      final profile = UserProfile(
+        uid:          _uid,
+        fcmToken:     fcmToken,
+        publicKeyJson: publicKeyJson,
+        createdAt:    DateTime.now(),
+      );
 
-    final result = await _repo.initializeUserProfile(profile);
-    result.fold(
-      (f) {
-        Log.e(_tag, 'Profile init failed: ${f.message}');
-        state = state.copyWith(
-          status: PairingStatus.error,
-          errorMessage: f.message,
-        );
-      },
-      (_) {
-        Log.i(_tag, 'Profile initialized');
-        state = state.copyWith(status: PairingStatus.idle);
+      final result = await _repo.initializeUserProfile(profile)
+          .timeout(const Duration(seconds: 10));
+      result.fold(
+        (f) {
+          Log.w(_tag, 'Profile init failed (continuing): ${f.message}');
+          // Proceed to idle — the user can still generate/enter codes.
+          state = state.copyWith(status: PairingStatus.idle);
+        },
+        (_) async {
+          Log.i(_tag, 'Profile initialized');
+          // Phase 2 Fix: Attempt to restore active pair session on app startup
+          await _restoreSession();
+        },
+      );
+    } catch (e) {
+      // Timeout or network error — proceed to idle anyway.
+      Log.w(_tag, 'Profile init timed out (continuing): $e');
+      state = state.copyWith(status: PairingStatus.idle);
+    }
+  }
+
+  Future<void> _restoreSession() async {
+    final sessionResult = await _repo.getActivePairSession(_uid);
+    await sessionResult.fold(
+      (_) async => state = state.copyWith(status: PairingStatus.idle),
+      (session) async {
+        if (session != null) {
+          Log.i(_tag, 'Restored active session: ${session.coupleId}');
+          await _crypto.deriveSessionKey(session.partnerPublicKeyJson(_uid));
+          state = state.copyWith(
+            status: PairingStatus.paired,
+            session: session,
+          );
+        } else {
+          state = state.copyWith(status: PairingStatus.idle);
+        }
       },
     );
   }
@@ -135,26 +187,35 @@ class PairingNotifier extends Notifier<PairingState> {
   Future<void> generateCode() async {
     state = state.copyWith(status: PairingStatus.generatingCode);
 
-    final pubKeyResult = await _crypto.getLocalPublicKey();
-    final publicKeyJson = pubKeyResult.getOrElse(() => '');
-    final fcmToken = await FirestorePairingDataSource().getFcmToken() ?? '';
+    try {
+      final pubKeyResult = await _crypto.getLocalPublicKey();
+      final publicKeyJson = pubKeyResult.getOrElse(() => '');
+      final fcmToken = await FirestorePairingDataSource().getFcmToken()
+          .timeout(const Duration(seconds: 5), onTimeout: () => null) ?? '';
 
-    final result = await _repo.generatePairCode(
-      initiatorUid:           _uid,
-      initiatorFcmToken:      fcmToken,
-      initiatorPublicKeyJson: publicKeyJson,
-    );
+      final result = await _repo.generatePairCode(
+        initiatorUid:           _uid,
+        initiatorFcmToken:      fcmToken,
+        initiatorPublicKeyJson: publicKeyJson,
+      ).timeout(const Duration(seconds: 10));
 
-    result.fold(
-      (f) => state = state.copyWith(
+      result.fold(
+        (f) => state = state.copyWith(
+          status: PairingStatus.error,
+          errorMessage: friendlyError(f.message),
+        ),
+        (code) => state = state.copyWith(
+          status: PairingStatus.awaitingPartner,
+          pairCode: code,
+        ),
+      );
+    } catch (e) {
+      Log.e(_tag, 'generateCode failed: $e');
+      state = state.copyWith(
         status: PairingStatus.error,
-        errorMessage: f.message,
-      ),
-      (code) => state = state.copyWith(
-        status: PairingStatus.awaitingPartner,
-        pairCode: code,
-      ),
-    );
+        errorMessage: friendlyError(e),
+      );
+    }
   }
 
   // ── Step 2b: Joiner appends a digit to the code entry ────────────────
@@ -180,34 +241,60 @@ class PairingNotifier extends Notifier<PairingState> {
   Future<void> acceptCode() async {
     state = state.copyWith(status: PairingStatus.verifying);
 
-    final pubKeyResult = await _crypto.getLocalPublicKey();
-    final publicKeyJson = pubKeyResult.getOrElse(() => '');
-    final fcmToken = await FirestorePairingDataSource().getFcmToken() ?? '';
+    try {
+      final pubKeyResult = await _crypto.getLocalPublicKey();
+      final publicKeyJson = pubKeyResult.getOrElse(() => '');
+      final fcmToken = await FirestorePairingDataSource().getFcmToken()
+          .timeout(const Duration(seconds: 5), onTimeout: () => null) ?? '';
 
-    final result = await _repo.acceptPairCode(
-      code:                state.enteredCode,
-      joinerUid:           _uid,
-      joinerFcmToken:      fcmToken,
-      joinerPublicKeyJson: publicKeyJson,
-    );
+      final result = await _repo.acceptPairCode(
+        code:                state.enteredCode,
+        joinerUid:           _uid,
+        joinerFcmToken:      fcmToken,
+        joinerPublicKeyJson: publicKeyJson,
+      ).timeout(const Duration(seconds: 10));
 
-    await result.fold(
-      (f) async {
-        Log.e(_tag, 'acceptPairCode error: ${f.message}');
-        state = state.copyWith(
-          status: PairingStatus.error,
-          errorMessage: f.message,
-          enteredCode: '',
-        );
-      },
-      (session) async {
-        Log.i(_tag, 'Paired! coupleId=${session.coupleId}');
-        // Derive shared session key using partner's public key.
-        await _crypto.deriveSessionKey(session.partnerPublicKeyJson(_uid));
-        state = state.copyWith(
-          status: PairingStatus.paired,
-          session: session,
-        );
+      await result.fold(
+        (f) async {
+          Log.e(_tag, 'acceptPairCode error: ${f.message}');
+          state = state.copyWith(
+            status: PairingStatus.error,
+            errorMessage: friendlyError(f.message),
+            enteredCode: '',
+          );
+        },
+        (session) async {
+          Log.i(_tag, 'Paired! coupleId=${session.coupleId}');
+          // Derive shared session key using partner's public key.
+          await _crypto.deriveSessionKey(session.partnerPublicKeyJson(_uid));
+          state = state.copyWith(
+            status: PairingStatus.paired,
+            session: session,
+          );
+        },
+      );
+    } catch (e) {
+      Log.e(_tag, 'acceptCode failed: $e');
+      state = state.copyWith(
+        status: PairingStatus.error,
+        errorMessage: friendlyError(e),
+        enteredCode: '',
+      );
+    }
+  }
+
+  Future<void> unpair() async {
+    final currentSession = state.session;
+    if (currentSession == null) return;
+
+    state = state.copyWith(status: PairingStatus.idle);
+    
+    final result = await _repo.unpair(currentSession);
+    result.fold(
+      (f) => Log.e(_tag, 'Unpair failed: ${f.message}'),
+      (_) {
+        Log.i(_tag, 'Successfully unpaired');
+        state = const PairingState();
       },
     );
   }

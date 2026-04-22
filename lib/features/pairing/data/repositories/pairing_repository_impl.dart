@@ -103,12 +103,9 @@ class PairingRepositoryImpl implements IPairingRepository {
   }
 
   @override
-  Future<Either<PairingFailure, void>> unpair(String coupleId) async {
+  Future<Either<PairingFailure, void>> unpair(PairSession session) async {
     try {
-      // Both UIDs needed — fetched via the couple document by the caller.
-      // The datasource handles batch deletion.
-      // For now delegate with placeholder UIDs; full impl when PairSession is cached.
-      await _ds.unpair(coupleId, '', '');
+      await _ds.unpair(session.coupleId, session.user1Uid, session.user2Uid);
       return const Right(null);
     } catch (e, st) {
       Log.e(_tag, 'unpair failed', error: e, stack: st);

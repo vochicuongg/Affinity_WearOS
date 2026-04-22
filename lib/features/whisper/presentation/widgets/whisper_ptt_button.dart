@@ -59,29 +59,27 @@ class _WhisperPttButtonState extends ConsumerState<WhisperPttButton>
     final ws = ref.watch(whisperNotifierProvider);
     final notifier = ref.read(whisperNotifierProvider.notifier);
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    return Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
       children: [
-        // ── Waveform (visible while recording or playing) ──────────────
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: ws.isRecording || ws.status == WhisperUiStatus.playing
-              ? WaveformWidget(
-                  key: const ValueKey('waveform'),
-                  data: WaveformData(
-                    amplitudes:  ws.amplitudes,
-                    isActive:    ws.isRecording,
-                    accentColor: _accent,
-                  ),
-                  width:  160,
-                  height: 44,
-                )
-              : const SizedBox(key: ValueKey('gap'), height: 44),
-        ),
+        // ── Waveform (overlaid above button when recording/playing) ────
+        if (ws.isRecording || ws.status == WhisperUiStatus.playing)
+          Positioned(
+            top: -52,
+            child: WaveformWidget(
+              key: const ValueKey('waveform'),
+              data: WaveformData(
+                amplitudes:  ws.amplitudes,
+                isActive:    ws.isRecording,
+                accentColor: _accent,
+              ),
+              width:  160,
+              height: 44,
+            ),
+          ),
 
-        const SizedBox(height: 8),
-
-        // ── Main PTT button ────────────────────────────────────────────
+        // ── Main PTT button (centred) ──────────────────────────────────
         GestureDetector(
           onLongPressStart: (_) async {
             await WatchHaptics.medium(); // Phase 6: tactile start
@@ -124,12 +122,13 @@ class _WhisperPttButtonState extends ConsumerState<WhisperPttButton>
           ),
         ),
 
-        const SizedBox(height: 6),
-
         // ── Timer / label under button ─────────────────────────────────
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: _buildLabel(ws),
+        Positioned(
+          bottom: -28,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _buildLabel(ws),
+          ),
         ),
       ],
     );

@@ -42,5 +42,5 @@ abstract interface class IPairingRepository {
 
   /// Dissolves the pairing, clears both `users` documents and deletes the
   /// `couples` document.
-  Future<Either<PairingFailure, void>> unpair(String coupleId);
+  Future<Either<PairingFailure, void>> unpair(PairSession session);
 }

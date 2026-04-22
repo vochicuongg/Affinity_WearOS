@@ -140,52 +140,79 @@ class _IdleView extends ConsumerWidget {
 //  Show Code — display the 6-digit code large for partner to enter
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _ShowCodeView extends StatelessWidget {
+class _ShowCodeView extends ConsumerWidget {
   const _ShowCodeView({required this.code});
   final String code;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Split into two groups of 3 for readability: "123 456"
     final left  = code.length >= 3 ? code.substring(0, 3) : code;
     final right = code.length >= 6 ? code.substring(3, 6) : '';
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Stack(
       children: [
-        const Text(
-          'YOUR CODE',
-          style: TextStyle(fontSize: 9, letterSpacing: 2, color: AppTheme.onDisabled),
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'YOUR CODE',
+                style: TextStyle(fontSize: 9, letterSpacing: 2, color: AppTheme.onDisabled),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    left,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.onBackground,
+                      letterSpacing: 4,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    right,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.accent,
+                      letterSpacing: 4,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Waiting for partner...',
+                style: TextStyle(fontSize: 9, color: AppTheme.onDisabled),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 6),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              left,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.onBackground,
-                letterSpacing: 4,
+        // ── Back button ─────────────────────────────────────
+        Positioned(
+          top: 28,
+          left: 28,
+          child: GestureDetector(
+            onTap: () => ref.read(pairingNotifierProvider.notifier).reset(),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.surfaceCard,
+              ),
+              child: const Icon(
+                Icons.arrow_back_rounded,
+                color: AppTheme.onSurface,
+                size: 14,
               ),
             ),
-            const SizedBox(width: 8),
-            Text(
-              right,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.accent,
-                letterSpacing: 4,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Waiting for partner...',
-          style: TextStyle(fontSize: 9, color: AppTheme.onDisabled),
+          ),
         ),
       ],
     );
@@ -205,40 +232,67 @@ class _EnterCodeView extends ConsumerWidget {
     final notifier = ref.read(pairingNotifierProvider.notifier);
     final code = state.enteredCode.padRight(6, '·');
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Stack(
       children: [
-        // ── Code display ─────────────────────────────────────────────
-        Text(
-          '${code.substring(0, 3)} ${code.substring(3)}',
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 5,
-            color: AppTheme.onBackground,
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // ── Code display ─────────────────────────────────────────────
+              Text(
+                '${code.substring(0, 3)} ${code.substring(3)}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 5,
+                  color: AppTheme.onBackground,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // ── Numpad 3×4 ───────────────────────────────────────────────
+              SizedBox(
+                width: 130,
+                child: GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  mainAxisSpacing: 4,
+                  crossAxisSpacing: 4,
+                  childAspectRatio: 1.2,
+                  children: [
+                    for (final d in ['1','2','3','4','5','6','7','8','9','','0','⌫'])
+                      _NumKey(
+                        label: d,
+                        onTap: d == '⌫'
+                            ? notifier.deleteDigit
+                            : d.isEmpty
+                                ? null
+                                : () => notifier.appendDigit(d),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
-        // ── Numpad 3×4 ───────────────────────────────────────────────
-        SizedBox(
-          width: 130,
-          child: GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            mainAxisSpacing: 4,
-            crossAxisSpacing: 4,
-            childAspectRatio: 1.2,
-            children: [
-              for (final d in ['1','2','3','4','5','6','7','8','9','','0','⌫'])
-                _NumKey(
-                  label: d,
-                  onTap: d == '⌫'
-                      ? notifier.deleteDigit
-                      : d.isEmpty
-                          ? null
-                          : () => notifier.appendDigit(d),
-                ),
-            ],
+        // ── Back button ─────────────────────────────────────
+        Positioned(
+          top: 28,
+          left: 28,
+          child: GestureDetector(
+            onTap: () => notifier.reset(),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.surfaceCard,
+              ),
+              child: const Icon(
+                Icons.arrow_back_rounded,
+                color: AppTheme.onSurface,
+                size: 14,
+              ),
+            ),
           ),
         ),
       ],
@@ -326,23 +380,38 @@ class _ErrorView extends ConsumerWidget {
   final String message;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      const Icon(Icons.error_outline, color: AppTheme.error, size: 28),
-      const SizedBox(height: 6),
-      Text(
-        message,
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 9, color: AppTheme.onSurface),
-      ),
-      const SizedBox(height: 8),
-      TextButton(
-        onPressed: () => ref.read(pairingNotifierProvider.notifier).reset(),
-        child: const Text('Retry', style: TextStyle(fontSize: 10, color: AppTheme.accentSoft)),
-      ),
-    ],
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Pick icon based on whether it's a connectivity issue.
+    final isNetworkError = message.toLowerCase().contains('internet') ||
+        message.toLowerCase().contains('connection') ||
+        message.toLowerCase().contains('wifi') ||
+        message.toLowerCase().contains('server');
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          isNetworkError ? Icons.wifi_off_rounded : Icons.error_outline,
+          color: AppTheme.error,
+          size: 28,
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10, color: AppTheme.onSurface),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => ref.read(pairingNotifierProvider.notifier).reset(),
+          child: const Text('Retry', style: TextStyle(fontSize: 10, color: AppTheme.accentSoft)),
+        ),
+      ],
+    );
+  }
 }

@@ -140,47 +140,54 @@ class _WearOsTileScreenState extends ConsumerState<WearOsTileScreen>
   void _onProximityTap() => WatchHaptics.tap();
 
   void _showMoodPicker() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppTheme.surfaceCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => const Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'YOUR MOOD',
-              style: TextStyle(
-                fontSize: 9,
-                letterSpacing: 2.0,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.onDisabled,
-              ),
-            ),
-            SizedBox(height: 16),
-            MoodColorPicker(),
-            SizedBox(height: 8),
-          ],
-        ),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const _MoodPickerPage(),
       ),
     );
   }
 
   void _showLoveSignalPicker() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppTheme.surfaceCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _LoveSignalPage(
+          onSelected: (signal) {
+            Navigator.pop(context);
+            ref.read(hapticNotifierProvider.notifier).sendSignal(signal);
+          },
+        ),
       ),
-      builder: (_) => _LoveSignalPicker(
-        onSelected: (signal) {
-          Navigator.pop(context);
-          ref.read(hapticNotifierProvider.notifier).sendSignal(signal);
-        },
+    );
+  }
+
+  void _showUnpairDialog() {
+    WatchHaptics.medium();
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surfaceCard,
+        titlePadding: const EdgeInsets.only(top: 24, bottom: 8),
+        contentPadding: EdgeInsets.zero,
+        actionsPadding: const EdgeInsets.only(bottom: 8),
+        title: const Text(
+          'Unpair device?',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: AppTheme.onSurface),
+        ),
+        actionsAlignment: MainAxisAlignment.spaceEvenly,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close_rounded, color: AppTheme.onDisabled),
+            onPressed: () => Navigator.pop(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.check_rounded, color: AppTheme.error),
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(pairingNotifierProvider.notifier).unpair();
+            },
+          ),
+        ],
       ),
     );
   }
@@ -269,28 +276,28 @@ class _WearOsTileScreenState extends ConsumerState<WearOsTileScreen>
             icon: Icons.vibration,
             label: 'Haptic',
             angleDeg: 0,      // Top
-            radius: 72,
+            radius: 64,
             onTap: _onHapticTap,
           ),
           _QuickActionButton(
             icon: Icons.palette_outlined,
             label: 'Mood',
             angleDeg: 90,     // Right
-            radius: 72,
+            radius: 64,
             onTap: _onMoodTap,
           ),
           _QuickActionButton(
             icon: Icons.mic_none_rounded,
             label: 'Whisper',
             angleDeg: 180,    // Bottom
-            radius: 72,
+            radius: 64,
             onTap: _onAudioTap,
           ),
           _QuickActionButton(
             icon: Icons.near_me_outlined,
             label: 'Proximity',
             angleDeg: 270,    // Left
-            radius: 72,
+            radius: 64,
             onTap: _onProximityTap,
           ),
 
@@ -328,17 +335,22 @@ class _WearOsTileScreenState extends ConsumerState<WearOsTileScreen>
 
           // ── Status label (bottom arc) ────────────────────────────────
           Positioned(
-            bottom: 28,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
-              child: Text(
-                connectionState.label,
-                key: ValueKey(connectionState),
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.8,
-                  color: connectionState.color,
+            bottom: 16,
+            child: GestureDetector(
+              onLongPress: connectionState == _ConnectionState.paired
+                  ? _showUnpairDialog
+                  : null,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                child: Text(
+                  connectionState.label,
+                  key: ValueKey(connectionState),
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.8,
+                    color: connectionState.color,
+                  ),
                 ),
               ),
             ),
@@ -346,7 +358,7 @@ class _WearOsTileScreenState extends ConsumerState<WearOsTileScreen>
 
           // ── App name (top arc) ───────────────────────────────────────
           const Positioned(
-            top: 30,
+            top: 18,
             child: Text(
               'AFFINITY',
               style: TextStyle(
@@ -361,7 +373,7 @@ class _WearOsTileScreenState extends ConsumerState<WearOsTileScreen>
           // ── Proximity distance label (Phase 4) ───────────────────────
           if (proximityState.isTracking)
             Positioned(
-              bottom: 18,
+              bottom: 6,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 600),
                 child: Text(
@@ -432,15 +444,77 @@ class _QuickActionButton extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Love Signal Picker — compact Wear OS bottom sheet (no scroll needed).
-//  Shows all predefined LoveSignals as tappable rows.
+//  Mood Picker Page — full-screen, round-aware layout.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _LoveSignalPicker extends StatelessWidget {
-  const _LoveSignalPicker({required this.onSelected});
+class _MoodPickerPage extends StatelessWidget {
+  const _MoodPickerPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return CircularWatchScaffold(
+      child: Stack(
+        children: [
+          // ── Main content (centred) ────────────────────────────────────
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 16), // Push content down to avoid back button
+                const Text(
+                  'YOUR MOOD',
+                  style: TextStyle(
+                    fontSize: 9,
+                    letterSpacing: 2.0,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.onDisabled,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const SizedBox(
+                  width: 130, // Reduced from 160 to avoid overlap
+                  height: 130,
+                  child: FittedBox(child: MoodColorPicker()),
+                ),
+              ],
+            ),
+          ),
+          // ── Back button (top-left) ────────────────────────────────────
+          Positioned(
+            top: 28,
+            left: 28,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.surfaceCard,
+                ),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: AppTheme.onSurface,
+                  size: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Love Signal Page — full-screen, curved-scroll Wear OS layout.
+//  Items indent horizontally near the top/bottom to follow the round bezel.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LoveSignalPage extends StatelessWidget {
+  const _LoveSignalPage({required this.onSelected});
   final ValueChanged<LoveSignal> onSelected;
 
-  // Exclude `custom` — it's only used for tap-Morse encoded signals.
   static final List<LoveSignal> _signals = [
     LoveSignal.heartbeat,
     LoveSignal.iLoveYou,
@@ -453,60 +527,99 @@ class _LoveSignalPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+    final screenSize = MediaQuery.of(context).size;
+    final itemCount = _signals.length + 2; // +1 header, +1 bottom padding
+
+    return CircularWatchScaffold(
+      child: Stack(
         children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 32,
-            height: 3,
-            decoration: BoxDecoration(
-              color: AppTheme.onDisabled,
-              borderRadius: BorderRadius.circular(2),
+          // ── Scrollable list ────────────────────────────────────────────
+          ListView.builder(
+            padding: const EdgeInsets.only(top: 48, bottom: 20), // Clear back button at the top
+            itemCount: itemCount,
+            itemBuilder: (context, index) {
+              // ── Straight vertical padding ──────────
+              const double hPad = 28.0; 
+
+              // ── Header ──────────────────────────────────────────────
+              if (index == 0) {
+                return const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Center(
+                    child: Text(
+                      'SEND SIGNAL',
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 2,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.onDisabled,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              // ── Bottom spacer ───────────────────────────────────────
+              if (index == itemCount - 1) {
+                return const SizedBox(height: 20);
+              }
+
+              // ── Signal row ─────────────────────────────────────────
+              final signal = _signals[index - 1];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: hPad),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => onSelected(signal),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceCard.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          signal.displayName,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                        ),
+                        const Spacer(),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 14,
+                          color: AppTheme.onDisabled,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // ── Back button (top-left) ────────────────────────────────────
+          Positioned(
+            top: 28,
+            left: 28,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.surfaceCard,
+                ),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: AppTheme.onSurface,
+                  size: 14,
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'SEND SIGNAL',
-            style: TextStyle(
-              fontSize: 9,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.onDisabled,
-            ),
-          ),
-          const SizedBox(height: 4),
-          ..._signals.map(
-            (signal) => _SignalRow(signal: signal, onTap: () => onSelected(signal)),
-          ),
-          const SizedBox(height: 8),
         ],
       ),
     );
   }
 }
-
-class _SignalRow extends StatelessWidget {
-  const _SignalRow({required this.signal, required this.onTap});
-  final LoveSignal signal;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            Text(signal.displayName, style: const TextStyle(fontSize: 11)),
-            const Spacer(),
-            const Icon(Icons.chevron_right_rounded, size: 14, color: AppTheme.onDisabled),
-          ],
-        ),
-      ),
-    );
-  }
-}
-

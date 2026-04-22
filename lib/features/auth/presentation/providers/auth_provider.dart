@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/security/encryption_service.dart';
 import '../../../../core/security/key_storage_service.dart';
+import '../../../../core/utils/friendly_error.dart';
 import '../../../../core/utils/logger.dart';
 import '../../data/datasources/firebase_auth_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
@@ -75,22 +76,34 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> _initAuth() async {
-    final result = await ref.read(silentSignInUseCaseProvider).call();
-    result.fold(
-      (failure) {
-        Log.e(_tag, 'Auth failed: ${failure.message}');
-        state = AuthState(
-          status: AuthStatus.unauthenticated,
-          errorMessage: failure.message,
-        );
-      },
-      (user) async {
-        Log.i(_tag, 'Authenticated: ${user.uid}');
-        state = AuthState(status: AuthStatus.authenticated, user: user);
-        // After auth: ensure RSA key pair exists.
-        await _ensureKeyPairExists();
-      },
-    );
+    try {
+      final result = await ref
+          .read(silentSignInUseCaseProvider)
+          .call()
+          .timeout(const Duration(seconds: 15));
+      result.fold(
+        (failure) {
+          Log.e(_tag, 'Auth failed: ${failure.message}');
+          state = AuthState(
+            status: AuthStatus.unauthenticated,
+            errorMessage: friendlyError(failure.message),
+          );
+        },
+        (user) async {
+          Log.i(_tag, 'Authenticated: ${user.uid}');
+          state = AuthState(status: AuthStatus.authenticated, user: user);
+          // After auth: ensure RSA key pair exists.
+          await _ensureKeyPairExists();
+        },
+      );
+    } catch (e) {
+      // Timeout or unexpected error — go to unauthenticated so user can retry.
+      Log.e(_tag, 'Auth timed out: $e');
+      state = AuthState(
+        status: AuthStatus.unauthenticated,
+        errorMessage: friendlyError(e),
+      );
+    }
   }
 
   Future<void> _ensureKeyPairExists() async {

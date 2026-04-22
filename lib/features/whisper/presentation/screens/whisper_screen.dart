@@ -20,12 +20,12 @@ class WhisperScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pairing      = ref.watch(pairingNotifierProvider);
+    final isPaired     = ref.watch(isPairedProvider);
     final accentColor  = ref.watch(partnerAccentColorProvider);
     final whisperState = ref.watch(whisperNotifierProvider);
 
     // Partner display name (from pairing session)
-    final partnerLabel = pairing.session != null ? '♥ Partner' : 'Not Paired';
+    final partnerLabel = isPaired ? '♥ Partner' : 'Not Paired';
 
     return CircularWatchScaffold(
       child: Stack(
